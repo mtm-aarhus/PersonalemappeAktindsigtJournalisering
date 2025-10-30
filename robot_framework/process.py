@@ -62,7 +62,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     SagsTitel = xdoc.attrib.get("ows_Title")
 
     #Hent info om sag, der skal journaliseres
-    casefiles = get_case_documents(session, gotesturl, SagsURL= RelativeSagsUrl, SagsID = SagsTitel)
+    casefiles = get_case_documents(session, gotesturl, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
 
     #Lav ny sag til at journalisere ind i
     CreatedCase = json.loads(create_case(gotesturl, SagsTitel, SagsID, session))
