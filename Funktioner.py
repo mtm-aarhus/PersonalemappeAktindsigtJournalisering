@@ -141,6 +141,7 @@ def get_case_metadata(gourl, sagsnummer, session):
 
 def get_case_documents(session, GOAPI_URL, SagsURL, SagsID ):
     # Initialize variables
+    print(f'Goapiurl {GOAPI_URL}, Sagsurl {SagsURL}, SagsID {SagsID}')
     Akt = SagsURL.split("/")[1]  
     encoded_sags_id = SagsID.replace("-", "%2D")
     ListURL = f"%27%2Fcases%2F{Akt}%2F{encoded_sags_id}%2FDokumenter%27"
@@ -190,7 +191,6 @@ def get_case_documents(session, GOAPI_URL, SagsURL, SagsID ):
                 view_id = context_info.get("viewId", "").strip("{}")
 
                 ikke_journaliseret_id = view_id
-
 
     # # If "UdenMapper.aspx" doesn't exist, combine views
     # if ViewId is None:
