@@ -43,8 +43,11 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
          #hvis der allerede ligger en journaliseringsmappe skal den slettes for ikke at have dobbeltmapper til at ligge
         JournaliseringsmappeID = Journaliseringsmappelink.rsplit("/")[-1]
         orchestrator_connection.log_info(f'Gammel journaliseringsmappe detekteret {JournaliseringsmappeID}')
-        delete_case_go(gotesturl, session, JournaliseringsmappeID)
-        orchestrator_connection.log_info(f'Gammel delingsmappe slettet for sag {JournaliseringsmappeID}')
+        try:
+            delete_case_go(gotesturl, session, JournaliseringsmappeID)
+            orchestrator_connection.log_info(f'Gammel delingsmappe slettet for sag {JournaliseringsmappeID}')
+        except Exception as e:
+            orchestrator_connection.log_info(f"Tried to delete old journaliseringsmappe, but failed {e}")
 
     #1 - definer stuff
     today_date = datetime.now().strftime("%d-%m-%Y")
