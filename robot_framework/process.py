@@ -36,6 +36,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     EmailBody = specific_content.get('EmailBody')
     MailModtager = specific_content.get("MailModtager")
     MailAfsender = specific_content.get("MailAfsender")
+    orchestrator_connection.log_info(f'Udleveringsmappelink  {Udleveringsmappelink}, sagsnummer {SagsNummer}, sagsid {SagsID}, sagstitel {SagsTitel}, Journaliseringsmappelink {Journaliseringsmappelink}')
 
     #Making go session
     session = create_session(go_username_test, go_password_test)

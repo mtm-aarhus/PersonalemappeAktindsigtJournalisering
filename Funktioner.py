@@ -25,7 +25,7 @@ def create_case(go_api_url, SagsTitel, SagsID, session):
 
     payload = json.dumps({
     "CaseTypePrefix": "GEO",
-    "MetadataXml": f"<z:row xmlns:z=\"#RowsetSchema\" ows_Title=\"Journaliseret aktindsigtssag {SagsID} - {SagsTitel}\" ows_CaseStatus=\"Åben\" ows_EksterntSagsID=\"{SagsID}\" ows_EksterntSystemID=\"TestSystemID\" />",
+    "MetadataXml": f"<z:row xmlns:z=\"#RowsetSchema\" ows_Title=\"Journaliseret {SagsTitel}\" ows_CaseStatus=\"Åben\" ows_EksterntSagsID=\"{SagsID}\" ows_EksterntSystemID=\"TestSystemID\" />",
     "ReturnWhenCaseFullyCreated": True
     })
     headers = {
