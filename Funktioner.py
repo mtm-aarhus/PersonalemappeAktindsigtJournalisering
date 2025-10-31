@@ -42,7 +42,7 @@ def upload_document_go(go_api_url, payload, session):
     '''
     url = f"{go_api_url}/_goapi/Documents/AddToCase"
     response = session.post(url, data=payload, timeout=1200)
-    print(response.text())
+    print(response.text)
     response.raise_for_status()
     return response.json()
 
