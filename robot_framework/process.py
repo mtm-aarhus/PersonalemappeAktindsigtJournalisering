@@ -36,7 +36,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     EmailBody = specific_content.get('EmailBody')
     MailModtager = specific_content.get("MailModtager")
     MailAfsender = specific_content.get("MailAfsender")
-    
+
     #Making go session
     session = create_session(go_username_test, go_password_test)
     if Journaliseringsmappelink:
@@ -88,6 +88,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     "Dato": today_date,
                     "CCMMustBeOnPostList": "0"
                     }
+        orchestrator_connection.log_info(f'ows_dict {ows_dict}')
             
         payload = make_payload_document(ows_dict= ows_dict, caseID = CaseID, FolderPath= "", byte_arr= byte_arr, filename = DokTitle )
         upload_document_go(gotesturl, payload = payload, session = session)
