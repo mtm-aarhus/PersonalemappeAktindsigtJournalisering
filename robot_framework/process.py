@@ -77,6 +77,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         download_file(go_url = gotesturl, file_path= DokTitle, DokumentID= DokID, GoUsername= go_username_test, GoPassword= go_password_test )
 
         with open(DokTitle, "rb") as local_file:
+            orchestrator_connection.log_info(f'Opened file {DokTitle}')
             file_content = local_file.read()
             byte_arr = list(file_content)
 

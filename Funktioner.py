@@ -69,8 +69,6 @@ def download_file(go_url, file_path, DokumentID, GoUsername, GoPassword):
                 DocumentURL = content.split("ows_EncodedAbsUrl=")[1].split('"')[1]
                 DocumentURL = DocumentURL.split("\\")[0].replace("test.go.aarhus", "testad.go.aarhus")
 
-
-
                 # Download selve filen
                 handler = requests.Session()
                 handler.auth = HttpNtlmAuth(GoUsername, GoPassword)
@@ -78,6 +76,7 @@ def download_file(go_url, file_path, DokumentID, GoUsername, GoPassword):
                 with handler.get(DocumentURL, stream=True) as download_response:
                     download_response.raise_for_status()
                     with open(file_path, "wb") as file:
+                        print('Opened file')
                         for chunk in download_response.iter_content(chunk_size=8192):
                             file.write(chunk)
 
