@@ -28,16 +28,15 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
     specific_content = json.loads(queue_element.data)
 
-    Udleveringsmappelink = specific_content.get('Udleveringsmappelink')
-    SagsNummer = Udleveringsmappelink.rsplit("/")[-1]
-    SagsID = specific_content.get('caseid') #aktid
-    SagsTitel = specific_content.get('PersonaleSagsTitel') #Per-1223-121212
+    Udleveringsmappelink = specific_content.get('Udleveringsmappelink') #Udleveringsmappelink  https://testad.go.aarhuskommune.dk//cases/GEO39/GEO-2025-000089,
+    SagsNummer = Udleveringsmappelink.rsplit("/")[-1] #sagsnummer GEO-2025-000089
+    SagsID = specific_content.get('caseid') #sagsid 251027-0056
+    SagsTitel = specific_content.get('PersonaleSagsTitel') # sagstitel PER-2024-000254
     Journaliseringsmappelink = specific_content.get('Journaliseringsmappelink')
     EmailBody = specific_content.get('EmailBody')
     MailModtager = specific_content.get("MailModtager")
     MailAfsender = specific_content.get("MailAfsender")
-    orchestrator_connection.log_info(f'Udleveringsmappelink  {Udleveringsmappelink}, sagsnummer {SagsNummer}, sagsid {SagsID}, sagstitel {SagsTitel}, Journaliseringsmappelink {Journaliseringsmappelink}')
-
+    
     #Making go session
     session = create_session(go_username_test, go_password_test)
     if Journaliseringsmappelink:
