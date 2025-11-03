@@ -28,26 +28,28 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
     specific_content = json.loads(queue_element.data)
 
-    Udleveringsmappelink = specific_content.get('Udleveringsmappelink') #Udleveringsmappelink  https://testad.go.aarhuskommune.dk//cases/GEO39/GEO-2025-000089,
-    SagsNummer = Udleveringsmappelink.rsplit("/")[-1] #sagsnummer GEO-2025-000089
-    SagsID = specific_content.get('caseid') #sagsid 251027-0056
-    SagsTitel = specific_content.get('PersonaleSagsTitel') # sagstitel PER-2024-000254
+    Udleveringsmappelink = specific_content.get('Udleveringsmappelink') 
+    SagsNummer = Udleveringsmappelink.rsplit("/")[-1] 
+    SagsID = specific_content.get('caseid') 
+    SagsTitel = specific_content.get('PersonaleSagsTitel') 
     Journaliseringsmappelink = specific_content.get('Journaliseringsmappelink')
     EmailBody = specific_content.get('EmailBody')
     MailModtager = specific_content.get("MailModtager")
     MailAfsender = specific_content.get("MailAfsender")
+    Beskrivelse = specific_content.get("Beskrivelse")
+    Modtagelsesdato = specific_content.get("Modtagelsesdato")
 
     #Making go session
     session = create_session(go_username_test, go_password_test)
     if Journaliseringsmappelink:
-         #hvis der allerede ligger en journaliseringsmappe skal den slettes for ikke at have dobbeltmapper til at ligge
+            #hvis der allerede ligger en journaliseringsmappe skal den slettes for ikke at have dobbeltmapper til at ligge
         JournaliseringsmappeID = Journaliseringsmappelink.rsplit("/")[-1]
-        orchestrator_connection.log_info(f'Gammel journaliseringsmappe detekteret {JournaliseringsmappeID}')
+        print(f'Gammel journaliseringsmappe detekteret {JournaliseringsmappeID}')
         try:
             delete_case_go(gotesturl, session, JournaliseringsmappeID)
-            orchestrator_connection.log_info(f'Gammel delingsmappe slettet for sag {JournaliseringsmappeID}')
+            print(f'Gammel delingsmappe slettet for sag {JournaliseringsmappeID}')
         except Exception as e:
-            orchestrator_connection.log_info(f"Tried to delete old journaliseringsmappe, but failed {e}")
+            print(f"Tried to delete old journaliseringsmappe, but failed {e}")
 
     #1 - definer stuff
     today_date = datetime.now().strftime("%d-%m-%Y")
@@ -65,6 +67,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     casefiles = get_case_documents(session, gotesturl, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
 
     #Lav ny sag til at journalisere ind i
+    session.headers.clear()
     CreatedCase = json.loads(create_case(gotesturl, SagsTitel, SagsID, session))
     RelativeSagsUrl = CreatedCase['CaseRelativeUrl']
     CaseID = CreatedCase['CaseID']
@@ -77,7 +80,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         download_file(go_url = gotesturl, file_path= DokTitle, DokumentID= DokID, GoUsername= go_username_test, GoPassword= go_password_test )
 
         with open(DokTitle, "rb") as local_file:
-            orchestrator_connection.log_info(f'Opened file {DokTitle}')
+            print(f'Opened file {DokTitle}')
             file_content = local_file.read()
             byte_arr = list(file_content)
 
@@ -89,18 +92,35 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     "Dato": today_date,
                     "CCMMustBeOnPostList": "0"
                     }
-        orchestrator_connection.log_info(f'ows_dict {ows_dict}')
             
         payload = make_payload_document(ows_dict= ows_dict, caseID = CaseID, FolderPath= "", byte_arr= byte_arr, filename = DokTitle )
         upload_document_go(gotesturl, payload = payload, session = session)
         delete_local_file(filsti = DokTitle)
 
+    application_pdf_path = save_application_pdf("Anmodning om aktindsigt", MailAfsender, Beskrivelse, Modtagelsesdato)
+    with open(application_pdf_path, "rb") as local_file:
+            file_content_application = local_file.read()
+            byte_arr_mail = list(file_content_application)
+    ows_dict_mail = {
+                    "Title": "Anmodning om aktindsigt.pdf",
+                    "CaseID": CaseID,  # Replace with your case ID
+                    "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
+                    "Korrespondance": "Udgående",
+                    "Dato": today_date,
+                    "CCMMustBeOnPostList": "0"
+                    }
+    payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Anmodning.pdf")
+    upload_document_go(gotesturl, payload = payload_mail, session = session)
+    delete_local_file(filsti = application_pdf_path)
+
+
+    #Journalising the answer
     sent_mail_pdf_path = save_communication_pdf("Vedr. din anmodning om aktindsigt", MailModtager, MailAfsender, EmailBody)
     with open(sent_mail_pdf_path, "rb") as local_file:
             file_content_mail = local_file.read()
             byte_arr_mail = list(file_content_mail)
     ows_dict_mail = {
-                    "Title": sent_mail_pdf_path,
+                    "Title": "Vedr. din anmodning om aktindsigt.pdf",
                     "CaseID": CaseID,  # Replace with your case ID
                     "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
                     "Korrespondance": "Udgående",
@@ -138,6 +158,6 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             "caseid": str(SagsID)
         })
         if result.rowcount == 0:
-            orchestrator_connection.log_info(f"⚠️ Ingen sag fundet med aktid={SagsID}")
+            print(f"⚠️ Ingen sag fundet med aktid={SagsID}")
         else:
-            orchestrator_connection.log_info(f"✅ Opdateret sag {SagsID} med journaliseringslink:")
+            print(f"✅ Opdateret sag {SagsID} med journaliseringslink:")

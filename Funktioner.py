@@ -42,7 +42,6 @@ def upload_document_go(go_api_url, payload, session):
     '''
     url = f"{go_api_url}/_goapi/Documents/AddToCase"
     response = session.post(url, data=payload, timeout=1200)
-    print(response.text)
     response.raise_for_status()
     return response.json()
 
@@ -77,7 +76,6 @@ def download_file(go_url, file_path, DokumentID, GoUsername, GoPassword):
                 with handler.get(DocumentURL, stream=True) as download_response:
                     download_response.raise_for_status()
                     with open(file_path, "wb") as file:
-                        print('Opened file')
                         for chunk in download_response.iter_content(chunk_size=8192):
                             file.write(chunk)
 
