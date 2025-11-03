@@ -51,7 +51,7 @@ def save_application_pdf(subject: str, from_email: str, body: str, modtagelsesda
     Returnerer den fulde sti til PDF-filen.
     """
     # Formater dato
-    modtagelsesdato = datetime.fromisoformat(modtagelsesdato).strftime("%d-%m-%Y %H:%M")
+    modtagelsesdato = datetime.fromisoformat(str(modtagelsesdato)).strftime("%d-%m-%Y %H:%M")
 
     # Gør filnavnet sikkert
     safe_subject = "".join(ch for ch in subject if ch.isalnum() or ch in (" ", "_", "-")).strip()
