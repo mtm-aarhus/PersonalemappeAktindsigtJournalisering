@@ -3,6 +3,7 @@ from datetime import datetime
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
+from dateutil import parser
 
 def save_communication_pdf(subject: str, to_email: str, from_email: str, body: str) -> str:
     """
@@ -51,7 +52,18 @@ def save_application_pdf(subject: str, from_email: str, body: str, modtagelsesda
     Returnerer den fulde sti til PDF-filen.
     """
     # Formater dato
-    modtagelsesdato = datetime.fromisoformat(str(modtagelsesdato)).strftime("%d-%m-%Y %H:%M")
+    # Formater dato sikkert, uanset om den er datetime eller streng
+    if isinstance(modtagelsesdato, datetime):
+        dt = modtagelsesdato
+    else:
+        try:
+            dt = datetime.fromisoformat(str(modtagelsesdato).replace("Z", "").replace("T", " "))
+        except Exception:
+            # fallback – prøv standard parsing
+            
+            dt = parser.parse(str(modtagelsesdato))
+    modtagelsesdato = dt.strftime("%d-%m-%Y %H:%M")
+
 
     # Gør filnavnet sikkert
     safe_subject = "".join(ch for ch in subject if ch.isalnum() or ch in (" ", "_", "-")).strip()
