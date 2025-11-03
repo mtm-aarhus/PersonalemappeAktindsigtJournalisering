@@ -34,3 +34,5 @@ dev = [
   "pylint",
   "flake8"
 ]
+[tool.setuptools.packages.find]
+exclude = ["journal_pdfs"]
