@@ -6,18 +6,14 @@ from reportlab.pdfgen import canvas
 
 def save_communication_pdf(subject: str, to_email: str, from_email: str, body: str) -> str:
     """
-    Gemmer en kommunikation som PDF i mappen 'journal_pdfs'.
+    Gemmer en kommunikation som PDF direkte i CWD.
     Returnerer den fulde sti til PDF-filen.
     """
-    # Sørg for at der findes en mappe
-    output_dir = os.path.join(os.getcwd(), "journal_pdfs")
-    os.makedirs(output_dir, exist_ok=True)
-
     # Gør filnavnet sikkert
     safe_subject = "".join(ch for ch in subject if ch.isalnum() or ch in (" ", "_", "-")).strip()
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     filename = f"{timestamp}_{safe_subject[:50] or 'kommunikation'}.pdf"
-    filepath = os.path.join(output_dir, filename)
+    filepath = os.path.join(os.getcwd(), filename)
 
     # Lav PDF
     c = canvas.Canvas(filepath, pagesize=A4)
@@ -46,24 +42,21 @@ def save_communication_pdf(subject: str, to_email: str, from_email: str, body: s
     c.drawText(textobject)
     c.showPage()
     c.save()
-
     return filepath
+
 
 def save_application_pdf(subject: str, from_email: str, body: str, modtagelsesdato) -> str:
     """
-    Gemmer anmodning og tekst
+    Gemmer en ansøgning som PDF direkte i CWD.
     Returnerer den fulde sti til PDF-filen.
     """
-    # Sørg for at der findes en mappe
-    output_dir = os.path.join(os.getcwd(), "journal_pdfs")
-    os.makedirs(output_dir, exist_ok=True)
-    
-    #Formater dato
+    # Formater dato
     modtagelsesdato = datetime.fromisoformat(modtagelsesdato).strftime("%d-%m-%Y %H:%M")
+
     # Gør filnavnet sikkert
     safe_subject = "".join(ch for ch in subject if ch.isalnum() or ch in (" ", "_", "-")).strip()
-    filename = f"{modtagelsesdato}_{safe_subject[:50] or 'kommunikation'}.pdf"
-    filepath = os.path.join(output_dir, filename)
+    filename = f"{modtagelsesdato}_{safe_subject[:50] or 'ansøgning'}.pdf"
+    filepath = os.path.join(os.getcwd(), filename)
 
     # Lav PDF
     c = canvas.Canvas(filepath, pagesize=A4)
@@ -91,5 +84,4 @@ def save_application_pdf(subject: str, from_email: str, body: str, modtagelsesda
     c.drawText(textobject)
     c.showPage()
     c.save()
-
     return filepath
