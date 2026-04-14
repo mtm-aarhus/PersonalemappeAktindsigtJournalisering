@@ -154,8 +154,11 @@ def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
     all_rows = []
 
     response = session.get(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
+    print(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
     response.raise_for_status()
+    
     ViewsIDArray = json.loads(response.text)
+    print(ViewsIDArray)
 
     for item in ViewsIDArray:
         if item["ViewName"] == "UdenMapper.aspx":

@@ -15,14 +15,11 @@ from GoBrugerstyring import *
 
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
 
-    gotesturl = orchestrator_connection.get_constant('GOApiTESTURL').value
+
     go_ad_url = orchestrator_connection.get_constant("GOApiURL").value
     go_ad_login = orchestrator_connection.get_credential("GOAktApiUser")
     go_ad_username = go_ad_login.username
     go_ad_password = go_ad_login.password
-    go_test_login = orchestrator_connection.get_credential("GOTestApiUser")
-    go_username_test = go_test_login.username
-    go_password_test = go_test_login.password
 
     specific_content = json.loads(queue_element.data)
 
@@ -38,13 +35,13 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     Modtagelsesdato = specific_content.get("Modtagelsesdato")
 
     #Making go session
-    session = create_session(go_username_test, go_password_test)
+    session = create_session(go_ad_username, go_ad_password)
     if Journaliseringsmappelink:
             #hvis der allerede ligger en journaliseringsmappe skal den slettes for ikke at have dobbeltmapper til at ligge
         JournaliseringsmappeID = Journaliseringsmappelink.rsplit("/")[-1]
         print(f'Gammel journaliseringsmappe detekteret {JournaliseringsmappeID}')
         try:
-            delete_case_go(gotesturl, session, JournaliseringsmappeID)
+            delete_case_go(go_ad_url, session, JournaliseringsmappeID)
             print(f'Gammel delingsmappe slettet for sag {JournaliseringsmappeID}')
         except Exception as e:
             print(f"Tried to delete old journaliseringsmappe, but failed {e}")
@@ -53,7 +50,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     today_date = datetime.now().strftime("%d-%m-%Y")
 
     #Hent filoplysninger på færdigbehandlet go-sag
-    SagsMetaData = get_case_metadata(gotesturl, SagsNummer, session)
+    SagsMetaData = get_case_metadata(go_ad_url, SagsNummer, session)
     SagsMetaData = json.loads(SagsMetaData).get("Metadata")
     xdoc = ET.fromstring(SagsMetaData)
 
@@ -62,20 +59,20 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     SagsTitel = xdoc.attrib.get("ows_Title")
 
     #Hent info om sag, der skal journaliseres
-    casefiles = get_case_documents(session, gotesturl, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
+    casefiles = get_case_documents(session, go_ad_url, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
 
     #Lav ny sag til at journalisere ind i
     session.headers.clear()
-    CreatedCase = json.loads(create_case(gotesturl, SagsTitel, SagsID, session))
+    CreatedCase = json.loads(create_case(go_ad_url, SagsTitel, SagsID, session))
     RelativeSagsUrl = CreatedCase['CaseRelativeUrl']
     CaseID = CreatedCase['CaseID']
-    CaseUrl_new = f'{gotesturl}/{RelativeSagsUrl}'
+    CaseUrl_new = f'{go_ad_url}/{RelativeSagsUrl}'
 
     for item in casefiles:
         DokTitle= item.get("Title", "")
         DokID = str(item.get("DocID"))
         #funktionen skal rettes tilbage til ikke testversion i drift
-        download_file(go_url = gotesturl, file_path= DokTitle, DokumentID= DokID, GoUsername= go_username_test, GoPassword= go_password_test )
+        download_file(go_url = go_ad_url, file_path= DokTitle, DokumentID= DokID, GoUsername= go_ad_username, GoPassword= go_ad_password )
 
         with open(DokTitle, "rb") as local_file:
             file_content = local_file.read()
@@ -91,7 +88,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     }
             
         payload = make_payload_document(ows_dict= ows_dict, caseID = CaseID, FolderPath= "", byte_arr= byte_arr, filename = DokTitle )
-        upload_document_go(gotesturl, payload = payload, session = session)
+        upload_document_go(go_ad_url, payload = payload, session = session)
         delete_local_file(filsti = DokTitle)
 
     application_pdf_path = save_application_pdf("Anmodning om aktindsigt", MailAfsender, Beskrivelse, Modtagelsesdato)
@@ -107,7 +104,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     "CCMMustBeOnPostList": "0"
                     }
     payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Anmodning.pdf")
-    upload_document_go(gotesturl, payload = payload_mail, session = session)
+    upload_document_go(go_ad_url, payload = payload_mail, session = session)
     delete_local_file(filsti = application_pdf_path)
 
 
@@ -125,13 +122,13 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     "CCMMustBeOnPostList": "0"
                     }
     payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Svar på anmodning.pdf")
-    upload_document_go(gotesturl, payload = payload_mail, session = session)
+    upload_document_go(go_ad_url, payload = payload_mail, session = session)
     delete_local_file(filsti = sent_mail_pdf_path)
 
     #her påsættes brugerstyring af go-journaliseringssagen
     ITEM_ID = "1249"
-    # update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, ITEM_ID, MailAfsender)
-    # close_case(go_ad_url, CaseID, go_ad_username, go_ad_password)
+    update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, ITEM_ID, MailAfsender)
+    close_case(go_ad_url, CaseID, go_ad_username, go_ad_password)
 
 
     SQL_SERVER = orchestrator_connection.get_constant('SqlServer').value 
