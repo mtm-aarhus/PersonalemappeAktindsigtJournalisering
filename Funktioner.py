@@ -137,95 +137,91 @@ def get_case_metadata(gourl, sagsnummer, session):
 
     return response.text
 
-def get_case_documents(session, GOAPI_URL, SagsURL, SagsID ):
-    # Initialize variables
+import json
+import re
+
+def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
     print(f'Goapiurl {GOAPI_URL}, Sagsurl {SagsURL}, SagsID {SagsID}')
-    Akt = SagsURL.split("/")[1]  
+
+    Akt = SagsURL.split("/")[1]
     encoded_sags_id = SagsID.replace("-", "%2D")
     ListURL = f"%27%2Fcases%2F{Akt}%2F{encoded_sags_id}%2FDokumenter%27"
-    ViewId = None
-    view_ids_to_use = []  # To handle combined views
-    response = session.get(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
-    ViewsIDArray = json.loads(response.text) # Parse the JSON
 
-    # Check for "UdenMapper.aspx"
+    ViewId = None
+    ikke_journaliseret_id = None
+    journaliseret_id = None
+    view_ids_to_use = []
+    all_rows = []
+
+    response = session.get(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
+    response.raise_for_status()
+    ViewsIDArray = json.loads(response.text)
+
     for item in ViewsIDArray:
         if item["ViewName"] == "UdenMapper.aspx":
             ViewId = item["ViewId"]
             break
+
         elif item["ViewName"] == "Ikkejournaliseret.aspx":
-            ikke_journaliseret_id = item["ViewId"]    
-            if ikke_journaliseret_id is None: 
+            ikke_journaliseret_id = item["ViewId"]
+            if ikke_journaliseret_id is None:
                 print('None detecteret')
                 LinkURL = item["LinkUrl"]
-                reponse = session.get(f'{GOAPI_URL}{LinkURL}')
-                                
-                # Find _spPageContextInfo JavaScript-objektet
-                match = re.search(r'_spPageContextInfo\s*=\s*({.*?});', reponse.text, re.DOTALL)
+                response = session.get(f'{GOAPI_URL}{LinkURL}')
+                response.raise_for_status()
+
+                match = re.search(r'_spPageContextInfo\s*=\s*({.*?});', response.text, re.DOTALL)
                 if not match:
                     raise ValueError("Kunne ikke finde _spPageContextInfo i HTML")
 
-                # Pars JSON-delen
                 context_info = json.loads(match.group(1))
+                ikke_journaliseret_id = context_info.get("viewId", "").strip("{}")
 
-                # Hent ViewId og fjern {} hvis tilstede
-                view_id = context_info.get("viewId", "").strip("{}")
-
-                ikke_journaliseret_id = view_id
         elif item["ViewName"] == "Journaliseret.aspx":
             journaliseret_id = item["ViewId"]
             if journaliseret_id is None:
                 print('None detecteret')
                 LinkURL = item["LinkUrl"]
-                reponse = session.get(f'{GOAPI_URL}{LinkURL}')
-                                
-                # Find _spPageContextInfo JavaScript-objektet
-                match = re.search(r'_spPageContextInfo\s*=\s*({.*?});', reponse.text, re.DOTALL)
+                response = session.get(f'{GOAPI_URL}{LinkURL}')
+                response.raise_for_status()
+
+                match = re.search(r'_spPageContextInfo\s*=\s*({.*?});', response.text, re.DOTALL)
                 if not match:
                     raise ValueError("Kunne ikke finde _spPageContextInfo i HTML")
 
-                # Pars JSON-delen
                 context_info = json.loads(match.group(1))
-                view_id = context_info.get("viewId", "").strip("{}")
+                journaliseret_id = context_info.get("viewId", "").strip("{}")
 
-                ikke_journaliseret_id = view_id
+    if ViewId is None:
+        view_ids_to_use = [vid for vid in [ikke_journaliseret_id, journaliseret_id] if vid]
 
-    # # If "UdenMapper.aspx" doesn't exist, combine views
-    # if ViewId is None:
-    #     view_ids_to_use = [ikke_journaliseret_id, journaliseret_id]
-    #     print(view_ids_to_use)
+    views = [ViewId] if ViewId else view_ids_to_use
 
-    # Iterate through views
-    for current_view_id in ([ViewId] if ViewId else view_ids_to_use):
+    if not views:
+        raise ValueError("Ingen gyldige ViewId fundet")
+
+    for current_view_id in views:
         firstrun = True
         MorePages = True
+        NextHref = None
 
         while MorePages:
+            url = f"{GOAPI_URL}/{SagsURL}/_api/web/GetList(@listUrl)/RenderListDataAsStream"
 
-            # If not the first run, fetch the next page
-            if not firstrun:
-                url = f"{GOAPI_URL}/{SagsURL}/_api/web/GetList(@listUrl)/RenderListDataAsStream"
-                url_with_query = f"{url}?@listUrl={ListURL}{NextHref.replace('?', '&')}"
-
-                response = session.post(url_with_query, timeout=500)
-                response.raise_for_status()
-                Dokumentliste = response.text  # Extract the content
+            if firstrun:
+                full_url = f"{url}?@listUrl={ListURL}&View={current_view_id}"
             else:
-                # If first run, fetch the first page for the current view
-                url = f"{GOAPI_URL}/{SagsURL}/_api/web/GetList(@listUrl)/RenderListDataAsStream"
-                query_params = f"?@listUrl={ListURL}&View={current_view_id}"
-                full_url = url + query_params
+                full_url = f"{url}?@listUrl={ListURL}{NextHref.replace('?', '&')}"
 
-                response = session.post(full_url, timeout=500)
-                response.raise_for_status()
-                Dokumentliste = response.text  # Extract the content
+            response = session.post(full_url, timeout=500)
+            response.raise_for_status()
 
-            # Deserialize response
-            dokumentliste_json = json.loads(Dokumentliste)
+            dokumentliste_json = response.json()
             dokumentliste_rows = dokumentliste_json.get("Row", [])
+            all_rows.extend(dokumentliste_rows)
 
-            # Check for additional pages
             NextHref = dokumentliste_json.get("NextHref")
-            MorePages = "NextHref" in dokumentliste_json
+            MorePages = bool(NextHref)
+            firstrun = False
 
-    return dokumentliste_rows
+    return all_rows

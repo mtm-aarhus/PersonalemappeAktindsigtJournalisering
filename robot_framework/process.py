@@ -11,17 +11,15 @@ from datetime import datetime
 from urllib.parse import quote_plus
 from datetime import datetime
 from mail_journaliser import *
+from GoBrugerstyring import *
 
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
 
     gotesturl = orchestrator_connection.get_constant('GOApiTESTURL').value
-    # go_api_url = orchestrator_connection.get_constant("GOApiURL").value
-    # go_api_login = orchestrator_connection.get_credential("GOAktApiUser")
-    # robot_user = orchestrator_connection.get_credential("Robot365User")
-    # username = robot_user.username
-    # password = robot_user.password
-    # go_username = go_api_login.username
-    # go_password = go_api_login.password
+    go_ad_url = orchestrator_connection.get_constant("GOApiURL").value
+    go_ad_login = orchestrator_connection.get_credential("GOAktApiUser")
+    go_ad_username = go_ad_login.username
+    go_ad_password = go_ad_login.password
     go_test_login = orchestrator_connection.get_credential("GOTestApiUser")
     go_username_test = go_test_login.username
     go_password_test = go_test_login.password
@@ -129,6 +127,12 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Svar på anmodning.pdf")
     upload_document_go(gotesturl, payload = payload_mail, session = session)
     delete_local_file(filsti = sent_mail_pdf_path)
+
+    #her påsættes brugerstyring af go-journaliseringssagen
+    ITEM_ID = "1249"
+    # update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, ITEM_ID, MailAfsender)
+    # close_case(go_ad_url, CaseID, go_ad_username, go_ad_password)
+
 
     SQL_SERVER = orchestrator_connection.get_constant('SqlServer').value 
     DATABASE_NAME = "AktindsigterPersonalemapper"
