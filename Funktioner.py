@@ -17,6 +17,23 @@ import os
 from urllib.parse import unquote, urlparse
 import uuid
 import xml.etree.ElementTree as ET
+def decrypt(b64_ciphertext: str) -> str:
+    EncryptionKey = os.getenv("PERSONALEINDSIGTENCRYPTIONKEY")
+    if not EncryptionKey:
+        return None
+    combined = base64.b64decode(b64_ciphertext)
+    iv = combined[:16]
+    ciphertext = combined[16:]
+
+    key = base64.b64decode(EncryptionKey) 
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
+
+    decryptor = cipher.decryptor()
+    padded_plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+
+    unpadder = padding.PKCS7(128).unpadder()
+    plaintext = unpadder.update(padded_plaintext) + unpadder.finalize()
+    return plaintext.decode('utf-8')
 
 
 def create_case(go_api_url, SagsTitel, SagsID, session):
@@ -139,7 +156,6 @@ import json
 import re
 
 def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
-    print(f'Goapiurl {GOAPI_URL}, Sagsurl {SagsURL}, SagsID {SagsID}')
 
     Akt = SagsURL.split("/")[1]
     encoded_sags_id = SagsID.replace("-", "%2D")
@@ -152,11 +168,9 @@ def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
     all_rows = []
 
     response = session.get(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
-    print(f"{GOAPI_URL}/{SagsURL}/_goapi/Administration/GetLeftMenuCounter")
     response.raise_for_status()
     
     ViewsIDArray = json.loads(response.text)
-    print(ViewsIDArray)
 
     for item in ViewsIDArray:
         if item["ViewName"] == "UdenMapper.aspx":
@@ -166,7 +180,6 @@ def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
         elif item["ViewName"] == "Ikkejournaliseret.aspx":
             ikke_journaliseret_id = item["ViewId"]
             if ikke_journaliseret_id is None:
-                print('None detecteret')
                 LinkURL = item["LinkUrl"]
                 response = session.get(f'{GOAPI_URL}{LinkURL}')
                 response.raise_for_status()
@@ -181,7 +194,6 @@ def get_case_documents(session, GOAPI_URL, SagsURL, SagsID):
         elif item["ViewName"] == "Journaliseret.aspx":
             journaliseret_id = item["ViewId"]
             if journaliseret_id is None:
-                print('None detecteret')
                 LinkURL = item["LinkUrl"]
                 response = session.get(f'{GOAPI_URL}{LinkURL}')
                 response.raise_for_status()

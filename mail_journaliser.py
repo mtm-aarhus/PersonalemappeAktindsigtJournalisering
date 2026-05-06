@@ -4,6 +4,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from dateutil import parser
+from Funktioner import decrypt
 
 def save_communication_pdf(subject: str, to_email: str, from_email: str, body: str) -> str:
     """
@@ -90,6 +91,7 @@ def save_application_pdf(subject: str, from_email: str, body: str, modtagelsesda
     # Indhold
     textobject.setFont("Helvetica", 11)
     if body:
+        body = decrypt(body)
         for line in body.splitlines():
             textobject.textLine(line)
 

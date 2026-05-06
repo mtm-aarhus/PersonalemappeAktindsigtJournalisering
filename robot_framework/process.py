@@ -132,40 +132,41 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                         fejlede_uploads.append(filename)
 
         delete_local_file(filsti=file_path)
-
-    application_pdf_path = save_application_pdf("Anmodning om aktindsigt", MailAfsender, Beskrivelse, Modtagelsesdato)
-    with open(application_pdf_path, "rb") as local_file:
-            file_content_application = local_file.read()
-            byte_arr_mail = list(file_content_application)
-    ows_dict_mail = {
-                    "Title": "Anmodning om aktindsigt.pdf",
-                    "CaseID": CaseID,  # Replace with your case ID
-                    "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
-                    "Korrespondance": "Udgående",
-                    "Dato": today_date,
-                    "CCMMustBeOnPostList": "0"
-                    }
-    payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Anmodning.pdf")
-    upload_document_go(go_ad_url, payload = payload_mail, session = session)
-    delete_local_file(filsti = application_pdf_path)
+    if Beskrivelse:
+        application_pdf_path = save_application_pdf("Anmodning om aktindsigt", MailAfsender, Beskrivelse, Modtagelsesdato)
+        with open(application_pdf_path, "rb") as local_file:
+                file_content_application = local_file.read()
+                byte_arr_mail = list(file_content_application)
+        ows_dict_mail = {
+                        "Title": "Anmodning om aktindsigt.pdf",
+                        "CaseID": CaseID,  # Replace with your case ID
+                        "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
+                        "Korrespondance": "Udgående",
+                        "Dato": today_date,
+                        "CCMMustBeOnPostList": "0"
+                        }
+        payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Anmodning.pdf")
+        upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        delete_local_file(filsti = application_pdf_path)
 
 
     #Journalising the answer
-    sent_mail_pdf_path = save_communication_pdf("Vedr. din anmodning om aktindsigt", MailModtager, MailAfsender, EmailBody)
-    with open(sent_mail_pdf_path, "rb") as local_file:
-            file_content_mail = local_file.read()
-            byte_arr_mail = list(file_content_mail)
-    ows_dict_mail = {
-                    "Title": "Vedr. din anmodning om aktindsigt.pdf",
-                    "CaseID": CaseID,  # Replace with your case ID
-                    "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
-                    "Korrespondance": "Udgående",
-                    "Dato": today_date,
-                    "CCMMustBeOnPostList": "0"
-                    }
-    payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Svar på anmodning.pdf")
-    upload_document_go(go_ad_url, payload = payload_mail, session = session)
-    delete_local_file(filsti = sent_mail_pdf_path)
+    if EmailBody:
+        sent_mail_pdf_path = save_communication_pdf("Vedr. din anmodning om aktindsigt", MailModtager, MailAfsender, EmailBody)
+        with open(sent_mail_pdf_path, "rb") as local_file:
+                file_content_mail = local_file.read()
+                byte_arr_mail = list(file_content_mail)
+        ows_dict_mail = {
+                        "Title": "Vedr. din anmodning om aktindsigt.pdf",
+                        "CaseID": CaseID,  # Replace with your case ID
+                        "Beskrivelse": "Uploaded af personaleaktbob",  # Add relevant description
+                        "Korrespondance": "Udgående",
+                        "Dato": today_date,
+                        "CCMMustBeOnPostList": "0"
+                        }
+        payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Svar på anmodning.pdf")
+        upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        delete_local_file(filsti = sent_mail_pdf_path)
 
     #her påsættes brugerstyring af go-journaliseringssagen
     mailHR = orchestrator_connection.get_constant('balas').value
