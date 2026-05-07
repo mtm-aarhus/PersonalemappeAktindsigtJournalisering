@@ -17,6 +17,10 @@ import os
 from urllib.parse import unquote, urlparse
 import uuid
 import xml.etree.ElementTree as ET
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 def decrypt(b64_ciphertext: str) -> str:
     EncryptionKey = os.getenv("PERSONALEINDSIGTENCRYPTIONKEY")
     if not EncryptionKey:

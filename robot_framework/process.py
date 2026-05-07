@@ -12,7 +12,10 @@ from urllib.parse import quote_plus
 from datetime import datetime
 from mail_journaliser import *
 from GoBrugerstyring import *
-
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 def process(orchestrator_connection: OrchestratorConnection, queue_element: QueueElement | None = None) -> None:
 
 
