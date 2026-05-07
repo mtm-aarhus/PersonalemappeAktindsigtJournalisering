@@ -202,7 +202,13 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
         except Exception as e:
             print(f"Journalisering fejlede: {e}")
 
+        try:
+            finaliser_dokumenter(go_ad_url, uploaded_doc_ids, session, orchestrator_connection)
+        except Exception as e:
+            print(f"Endeliggørelse fejlede: {e}")
+
     close_case(CaseID, session, go_ad_url)
+
 
     SQL_SERVER = orchestrator_connection.get_constant('SqlServer').value 
     DATABASE_NAME = "AktindsigterPersonalemapper"
