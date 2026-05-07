@@ -71,8 +71,17 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     CaseID = CreatedCase['CaseID']
     CaseUrl_new = f'{go_ad_url}/{RelativeSagsUrl}'
 
+    #Sagsbehandler sættes som det første
+    mailHR = orchestrator_connection.get_constant('balas').value
+    try:
+        update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, MailAfsender, mailHR)
+    except Exception as e:
+        orchestrator_connection.log_error("Kunne ikke sætte sagsbehandler")
+        raise e
+
     ikke_konverterede_filer = []
     fejlede_uploads = []
+    uploaded_doc_ids = []
 
     for item in casefiles:
         DokTitle = item.get("Title", "")
@@ -113,8 +122,10 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             if (len(byte_result) / (1024 * 1024)) > 10:
                 raise Exception("Fil er større end 10 MB, forsøger chunk-upload")
             response = upload_document_go(go_ad_url, payload=payload, session=session)
+
             if "DocId" not in response:
                 raise Exception("No DocId i response")
+            uploaded_doc_ids.append(response["DocId"])
 
         except Exception as e:
             print(f"Normal upload fejlede for {filename}: {e}")
@@ -127,6 +138,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                     large_response_json = json.loads(large_response)
                     if "DocId" not in large_response_json:
                         raise Exception(f"Ingen DocId i chunk-response for {filename}")
+                    uploaded_doc_ids.append(large_response_json["DocId"])
                     break
                 except Exception as retry_exception:
                     print(f"Chunk-upload forsøg {attempt} fejlede: {retry_exception}")
@@ -149,7 +161,11 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                         "CCMMustBeOnPostList": "0"
                         }
         payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Anmodning.pdf")
-        upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        response_besk = upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        if "DocId" in response_besk:
+            uploaded_doc_ids.append(response_besk["DocId"])
+        else:
+            raise Exception("No docid in response_besk")
         delete_local_file(filsti = application_pdf_path)
 
 
@@ -168,14 +184,25 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
                         "CCMMustBeOnPostList": "0"
                         }
         payload_mail = make_payload_document(ows_dict= ows_dict_mail, caseID= CaseID, FolderPath= "", byte_arr= byte_arr_mail, filename= "Svar på anmodning.pdf")
-        upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        response_mail = upload_document_go(go_ad_url, payload = payload_mail, session = session)
+        if "DocId" in response_mail:
+            uploaded_doc_ids.append(response_mail["DocId"])
+        else:
+            raise Exception("No doc id found for emailbody")
         delete_local_file(filsti = sent_mail_pdf_path)
 
-    #her påsættes brugerstyring af go-journaliseringssagen
-    mailHR = orchestrator_connection.get_constant('balas').value
-    update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, MailAfsender, mailHR)
-    close_case(CaseID, session, go_ad_url)
+    # Journalisér alle uploadede dokumenter inden lukning
+    if uploaded_doc_ids:
+        try:
+            payload_journaliser = {"DocumentIds": uploaded_doc_ids}
+            url = f"{go_ad_url}/_goapi/Documents/MarkMultipleAsCaseRecord/ByDocumentId"
+            response = session.post(url, data=json.dumps(payload_journaliser), headers={"Content-Type": "application/json"})
+            response.raise_for_status()
+            print(f"Journaliserede {len(uploaded_doc_ids)} dokumenter.")
+        except Exception as e:
+            print(f"Journalisering fejlede: {e}")
 
+    close_case(CaseID, session, go_ad_url)
 
     SQL_SERVER = orchestrator_connection.get_constant('SqlServer').value 
     DATABASE_NAME = "AktindsigterPersonalemapper"
