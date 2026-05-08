@@ -28,7 +28,7 @@ dependencies = [
     "urllib3 == 2.4.0",
     "reportlab == 4.4.*",
     "python-dateutil == 2.9.*",
-    "cryptography == 44.*",
+    "cryptography == 45.*",
 ]
 
 [project.optional-dependencies]
