@@ -65,7 +65,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     casefiles = get_case_documents(session, go_ad_url, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
 
     #Lav ny sag til at journalisere ind i
-    session.headers.clear()
+    session = create_session(go_ad_username, go_ad_password)
     CreatedCase = json.loads(create_case(go_ad_url, SagsTitel, SagsID, session))
     RelativeSagsUrl = CreatedCase['CaseRelativeUrl']
     CaseID = CreatedCase['CaseID']
