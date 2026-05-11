@@ -234,7 +234,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
 
     with engine.begin() as conn:
         result = conn.execute(sql, {
-            "link": CaseUrl_new,
+            "link": CaseUrl_new.replace("ad.", "", 1),
             "ts": datetime.now(),
             "caseid": str(SagsID)
         })
