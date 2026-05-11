@@ -88,7 +88,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     for item in casefiles:
         DokTitle = item.get("Title", "")
         DokID = str(item.get("DocID"))
-        file_path = DokTitle
+        file_path = os.path.join(os.getcwd(), DokTitle)
 
         byte_result, is_pdf, ikke_konverteret = try_convert_go_file_to_pdf(
             go_ad_url, DokID, session, go_ad_username, go_ad_password, go_ad_url, file_path

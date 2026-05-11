@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from OpenOrchestrator.orchestrator_connection.connection import OrchestratorConnection
 import os
 import json
-
+import time
 
 
 def create_ntlm_session(username: str, password: str) -> requests.Session:
@@ -52,24 +52,32 @@ def search_sharepoint_user(root_api_url: str, session: requests.Session, digest:
     return None
 
 def get_list_and_id(api_url, aktid, session, aktnr):
-    """Henter liste og itemid til opdatering af bruger i go."""
     endpoint = f"{api_url}/cases/{aktnr}/{aktid}/_goapi/Administration/ModernConfiguration"
     
     payload = {
         "providerTypes": ["ModernCase", "MoveDocument", "Insight", "SearchSystem", "UserSettings"]
     }
-    
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
-    
-    r = session.post(endpoint, headers=headers, json=payload)
-    r.raise_for_status()
+
+    for attempt in range(5):
+        r = session.post(endpoint, headers=headers, json=payload)
+        print(f"DEBUG attempt={attempt+1}, status={r.status_code}, body={r.text[:100]}")
+        
+        if r.status_code == 200 and r.text.strip():
+            break
+        
+        print(f"Tom response - venter 5 sekunder før forsøg {attempt+2}")
+        time.sleep(5)
+    else:
+        raise Exception(f"GO svarede ikke på ModernConfiguration efter 5 forsøg for {aktid}")
+
     data = r.json()
     caselist = data.get("ModernCase").get("ItemServerUrl").split('/')[-2]
     itemid = data.get("ModernCase").get("ListItemID")
-    return(caselist, itemid)
+    return caselist, itemid
 
 def update_case_field(api_url: str, session: requests.Session, digest: str, form_values: list, listnumber, item_id):
     """Opdaterer felt(er) i sagslisten."""
