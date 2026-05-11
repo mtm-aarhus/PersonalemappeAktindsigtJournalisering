@@ -69,12 +69,14 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     CreatedCase = json.loads(create_case(go_ad_url, SagsTitel, SagsID, session))
     RelativeSagsUrl = CreatedCase['CaseRelativeUrl']
     CaseID = CreatedCase['CaseID']
+    AktNr = RelativeSagsUrl.split('/')[-2]
     CaseUrl_new = f'{go_ad_url}/{RelativeSagsUrl}'
+    
 
     #Sagsbehandler sættes som det første
     mailHR = orchestrator_connection.get_constant('balas').value
     try:
-        update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, MailAfsender, mailHR)
+        update_case_owner(go_ad_url, go_ad_username, go_ad_password, CaseID, MailAfsender, mailHR, AktNr)
     except Exception as e:
         orchestrator_connection.log_error("Kunne ikke sætte sagsbehandler")
         raise e
