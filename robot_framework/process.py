@@ -27,7 +27,8 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     specific_content = json.loads(queue_element.data)
 
     Udleveringsmappelink = specific_content.get('Udleveringsmappelink') 
-    SagsNummer = Udleveringsmappelink.rsplit("/")[-1] 
+    if Udleveringsmappelink:
+        SagsNummer = Udleveringsmappelink.rsplit("/")[-1]
     SagsID = specific_content.get('caseid') 
     SagsTitel = specific_content.get('PersonaleSagsTitel') 
     Journaliseringsmappelink = specific_content.get('Journaliseringsmappelink')
@@ -53,16 +54,17 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     today_date = datetime.now().strftime("%d-%m-%Y")
 
     #Hent filoplysninger på færdigbehandlet go-sag
-    SagsMetaData = get_case_metadata(go_ad_url, SagsNummer, session)
-    SagsMetaData = json.loads(SagsMetaData).get("Metadata")
-    xdoc = ET.fromstring(SagsMetaData)
+    if Udleveringsmappelink:
+        SagsMetaData = get_case_metadata(go_ad_url, SagsNummer, session)
+        SagsMetaData = json.loads(SagsMetaData).get("Metadata")
+        xdoc = ET.fromstring(SagsMetaData)
 
-    # Extract attributes
-    RelativeSagsUrl = xdoc.attrib.get("ows_CaseUrl")
-    SagsTitel = xdoc.attrib.get("ows_Title")
+        # Extract attributes
+        RelativeSagsUrl = xdoc.attrib.get("ows_CaseUrl")
+        SagsTitel = xdoc.attrib.get("ows_Title")
 
-    #Hent info om sag, der skal journaliseres
-    casefiles = get_case_documents(session, go_ad_url, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
+        #Hent info om sag, der skal journaliseres
+        casefiles = get_case_documents(session, go_ad_url, SagsURL= RelativeSagsUrl, SagsID = RelativeSagsUrl.rsplit('/')[-1])
 
     #Lav ny sag til at journalisere ind i
     session = create_session(go_ad_username, go_ad_password)
@@ -84,71 +86,71 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     ikke_konverterede_filer = []
     fejlede_uploads = []
     uploaded_doc_ids = []
+    if Udleveringsmappelink:
+        for item in casefiles:
+            DokTitle = item.get("Title", "")
+            DokID = str(item.get("DocID"))
+            file_path = os.path.join(os.getcwd(), DokTitle)
 
-    for item in casefiles:
-        DokTitle = item.get("Title", "")
-        DokID = str(item.get("DocID"))
-        file_path = os.path.join(os.getcwd(), DokTitle)
+            byte_result, is_pdf, ikke_konverteret = try_convert_go_file_to_pdf(
+                go_ad_url, DokID, session, go_ad_username, go_ad_password, go_ad_url, file_path
+            )
 
-        byte_result, is_pdf, ikke_konverteret = try_convert_go_file_to_pdf(
-            go_ad_url, DokID, session, go_ad_username, go_ad_password, go_ad_url, file_path
-        )
+            if ikke_konverteret:
+                ikke_konverterede_filer.append(ikke_konverteret)
 
-        if ikke_konverteret:
-            ikke_konverterede_filer.append(ikke_konverteret)
+            if byte_result is None:
+                print(f"Kunne ikke hente fil {DokTitle} - springer over")
+                fejlede_uploads.append(DokTitle)
+                continue
 
-        if byte_result is None:
-            print(f"Kunne ikke hente fil {DokTitle} - springer over")
-            fejlede_uploads.append(DokTitle)
-            continue
+            if is_pdf:
+                file_path = f"{os.path.splitext(DokTitle)[0]}.pdf"
 
-        if is_pdf:
-            file_path = f"{os.path.splitext(DokTitle)[0]}.pdf"
+            filename = os.path.basename(file_path)
+            byte_arr = list(byte_result)
 
-        filename = os.path.basename(file_path)
-        byte_arr = list(byte_result)
+            ows_dict = {
+                "Title": filename,
+                "CaseID": CaseID,
+                "Beskrivelse": "Uploaded af personaleaktbob",
+                "Korrespondance": "Udgående",
+                "Dato": today_date,
+                "CCMMustBeOnPostList": "0"
+            }
+            payload = make_payload_document(
+                ows_dict=ows_dict, caseID=CaseID, FolderPath="", byte_arr=byte_arr, filename=filename
+            )
 
-        ows_dict = {
-            "Title": filename,
-            "CaseID": CaseID,
-            "Beskrivelse": "Uploaded af personaleaktbob",
-            "Korrespondance": "Udgående",
-            "Dato": today_date,
-            "CCMMustBeOnPostList": "0"
-        }
-        payload = make_payload_document(
-            ows_dict=ows_dict, caseID=CaseID, FolderPath="", byte_arr=byte_arr, filename=filename
-        )
+            try:
+                if (len(byte_result) / (1024 * 1024)) > 10:
+                    raise Exception("Fil er større end 10 MB, forsøger chunk-upload")
+                response = upload_document_go(go_ad_url, payload=payload, session=session)
 
-        try:
-            if (len(byte_result) / (1024 * 1024)) > 10:
-                raise Exception("Fil er større end 10 MB, forsøger chunk-upload")
-            response = upload_document_go(go_ad_url, payload=payload, session=session)
+                if "DocId" not in response:
+                    raise Exception("No DocId i response")
+                uploaded_doc_ids.append(response["DocId"])
 
-            if "DocId" not in response:
-                raise Exception("No DocId i response")
-            uploaded_doc_ids.append(response["DocId"])
+            except Exception as e:
+                print(f"Normal upload fejlede for {filename}: {e}")
+                for attempt in range(1, 4):
+                    try:
+                        print(f"Chunk-upload forsøg {attempt} for {filename}")
+                        large_response = upload_large_document(
+                            go_ad_url, payload, session, byte_result, orchestrator_connection
+                        )
+                        large_response_json = json.loads(large_response)
+                        if "DocId" not in large_response_json:
+                            raise Exception(f"Ingen DocId i chunk-response for {filename}")
+                        uploaded_doc_ids.append(large_response_json["DocId"])
+                        break
+                    except Exception as retry_exception:
+                        print(f"Chunk-upload forsøg {attempt} fejlede: {retry_exception}")
+                        if attempt == 3:
+                            print(f"Alle upload-metoder fejlede for {filename}")
+                            fejlede_uploads.append(filename)
 
-        except Exception as e:
-            print(f"Normal upload fejlede for {filename}: {e}")
-            for attempt in range(1, 4):
-                try:
-                    print(f"Chunk-upload forsøg {attempt} for {filename}")
-                    large_response = upload_large_document(
-                        go_ad_url, payload, session, byte_result, orchestrator_connection
-                    )
-                    large_response_json = json.loads(large_response)
-                    if "DocId" not in large_response_json:
-                        raise Exception(f"Ingen DocId i chunk-response for {filename}")
-                    uploaded_doc_ids.append(large_response_json["DocId"])
-                    break
-                except Exception as retry_exception:
-                    print(f"Chunk-upload forsøg {attempt} fejlede: {retry_exception}")
-                    if attempt == 3:
-                        print(f"Alle upload-metoder fejlede for {filename}")
-                        fejlede_uploads.append(filename)
-
-        delete_local_file(filsti=file_path)
+            delete_local_file(filsti=file_path)
     if Beskrivelse:
         application_pdf_path = save_application_pdf("Anmodning om aktindsigt", MailAfsender, Beskrivelse, Modtagelsesdato)
         with open(application_pdf_path, "rb") as local_file:
