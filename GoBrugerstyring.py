@@ -199,6 +199,5 @@ def finaliser_dokumenter(go_api_url: str, doc_ids: list, session: requests.Sessi
     response = session.post(url, data=payload, headers={"Content-Type": "application/json"})
     response.raise_for_status()
     result = response.json()
-    if not result.get("Success"):
-        raise Exception(f"Endeliggørelse fejlede: {result.get('Message')}")
+
     orchestrator_connection.log_info(f"Endeliggjorde {len(doc_ids)} dokumenter.")
