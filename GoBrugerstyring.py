@@ -137,7 +137,7 @@ def update_case_owner(api_url: str, username: str, password: str, case_id: str, 
     },
     {
         "FieldName": "CaseCategory",
-        "FieldValue": "Kun sagsbehandlere på sagen",
+        "FieldValue": "Standard",
         "HasException": False,
         "ErrorMessage": None
     },
