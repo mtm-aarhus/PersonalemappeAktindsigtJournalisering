@@ -24,6 +24,14 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     go_ad_username = go_ad_login.username
     go_ad_password = go_ad_login.password
 
+    # SharePoint-credentials (samme opsætning som i Aktbob2-Journaliser)
+    sharepoint_certification = orchestrator_connection.get_credential("SharePointCert")
+    sharepoint_api = orchestrator_connection.get_credential("SharePointAPI")
+    sp_tenant = sharepoint_api.username
+    sp_client_id = sharepoint_api.password
+    sp_thumbprint = sharepoint_certification.username
+    sp_cert_path = sharepoint_certification.password
+
     specific_content = json.loads(queue_element.data)
 
     Udleveringsmappelink = specific_content.get('Udleveringsmappelink') 
@@ -37,6 +45,7 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
     MailAfsender = specific_content.get("MailAfsender")
     Beskrivelse = specific_content.get("Beskrivelse")
     Modtagelsesdato = specific_content.get("Modtagelsesdato")
+    SharepointMappelink = specific_content.get("SharepointMappelink")
 
     #Making go session
     session = create_session(go_ad_username, go_ad_password)
@@ -195,6 +204,26 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             raise Exception("No doc id found for emailbody")
         delete_local_file(filsti = sent_mail_pdf_path)
 
+    if SharepointMappelink:
+        try:
+            sp_site_url, sp_relative_folder = parse_sharepoint_url(SharepointMappelink)
+            sharepoint_doc_ids = process_sharepoint_folders(
+                sharepoint_site_url=sp_site_url,
+                folders=[sp_relative_folder],
+                go_api_url=go_ad_url,
+                tenant=sp_tenant,
+                client_id=sp_client_id,
+                thumbprint=sp_thumbprint,
+                cert_path=sp_cert_path,
+                session=session,
+                orchestrator_connection=orchestrator_connection,
+                case_id=CaseID
+            )
+            uploaded_doc_ids.extend(sharepoint_doc_ids)
+        except Exception as e:
+            orchestrator_connection.log_error(f"Fejl ved hentning/upload af filer fra SharePoint-link {SharepointMappelink}: {e}")
+            raise e
+
     # Journalisér alle uploadede dokumenter inden lukning
     if uploaded_doc_ids:
         try:
@@ -244,3 +273,251 @@ def process(orchestrator_connection: OrchestratorConnection, queue_element: Queu
             print(f"⚠️ Ingen sag fundet med aktid={SagsID}")
         else:
             print(f"✅ Opdateret sag {SagsID} med journaliseringslink:")
+
+def sharepoint_client(tenant: str, client_id: str, thumbprint: str, cert_path: str, sharepoint_site_url: str, orchestrator_connection: OrchestratorConnection) -> ClientContext:
+    """
+    Creates and returns a SharePoint client context.
+    """
+    # Authenticate to SharePoint
+    cert_credentials = {
+        "tenant": tenant,
+        "client_id": client_id,
+        "thumbprint": thumbprint,
+        "cert_path": cert_path
+    }
+    ctx = ClientContext(sharepoint_site_url).with_client_certificate(**cert_credentials)
+
+    # Load and verify connection
+    web = ctx.web
+    ctx.load(web)
+    ctx.execute_query()
+
+    orchestrator_connection.log_info(f"Authenticated successfully. Site Title: {web.properties['Title']}")
+    return ctx
+
+def parse_sharepoint_url(full_url: str):
+
+    parsed = urlparse(full_url)
+    path_parts = [p for p in unquote(parsed.path).split("/") if p]
+
+    if len(path_parts) < 2 or path_parts[0].lower() not in ("sites", "teams"):
+        raise ValueError(f"Kunne ikke genkende SharePoint-linket som en sites-/teams-URL: {full_url}")
+
+    site_type = path_parts[0].lower()
+    site_name = path_parts[1]
+    site_url = f"{parsed.scheme}://{parsed.netloc}/{site_type}/{site_name}"
+    relative_folder = "/" + "/".join(path_parts)
+
+    return site_url, relative_folder
+
+
+def print_download_progress(offset, orchestrator_connection: OrchestratorConnection):
+    orchestrator_connection.log_info(f"Downloadet {offset} bytes...")
+
+
+def delete_document_go(go_api_url, doc_id, session):
+    url = f"{go_api_url}/_goapi/Documents/ByDocumentId"
+    payload = {
+        "DocId": doc_id,
+        "ForceDelete": True
+    }
+    response = session.delete(url, json=payload, timeout=1200)
+    response.raise_for_status()
+
+
+def create_and_delete_placeholder(go_api_url, case_id, folder_path, session, orchestrator_connection: OrchestratorConnection):
+    """
+    GO's API har ikke et rent 'opret mappe'-endpoint, så vi opretter mappen
+    ved at uploade en lille placeholder-fil og slette den igen bagefter.
+    """
+    file_content = b"A"
+    byte_array = list(file_content)
+
+    ows_dict = {
+        "Beskrivelse": "Leveret via SharePoint-journalisering",
+        "CCMMustBeOnPostList": "0"
+    }
+    metadata_xml = ' '.join([f'ows_{k}="{v}"' for k, v in ows_dict.items()])
+    metadata = f'<z:row xmlns:z="#RowsetSchema" {metadata_xml}/>'
+
+    payload = {
+        "Bytes": byte_array,
+        "CaseId": case_id,
+        "ListName": "Dokumenter",
+        "FolderPath": folder_path,
+        "FileName": "CreateFolder.txt",
+        "Metadata": metadata,
+        "Overwrite": True
+    }
+
+    try:
+        orchestrator_connection.log_info("Uploader placeholder-fil for at oprette mappe...")
+        upload_response = upload_document_go(go_api_url, payload, session)
+        doc_id = upload_response.get("DocId")
+        orchestrator_connection.log_info(f"Placeholder-fil uploadet med DocId: {doc_id}")
+
+        orchestrator_connection.log_info("Sletter placeholder-fil igen...")
+        delete_document_go(go_api_url, doc_id, session)
+    except Exception as e:
+        orchestrator_connection.log_info(f"Fejl ved oprettelse/sletning af placeholder-mappe: {e}")
+
+
+def fetch_files_in_folder(ctx: ClientContext, folder_url, base_folder=""):
+    files_array = []
+    folder = ctx.web.get_folder_by_server_relative_url(folder_url).execute_query()
+    files = folder.files.get().execute_query()
+    folders = folder.folders.get().execute_query()
+
+
+    for file in files:
+        files_array.append({
+            "ServerRelativeUrl": file.serverRelativeUrl,
+            "UniqueId": file.unique_id,
+            "Name": file.name,
+            "FolderPath": base_folder
+        })
+
+    for subfolder in folders:
+        subfolder_name = os.path.join(base_folder, subfolder.name)
+        files_array.extend(fetch_files_in_folder(ctx, subfolder.serverRelativeUrl, subfolder_name))
+
+    return files_array
+
+def process_sharepoint_folders(sharepoint_site_url, folders, go_api_url, tenant, client_id, thumbprint, cert_path, session, orchestrator_connection: OrchestratorConnection, case_id):
+    ctx = sharepoint_client(tenant, client_id, thumbprint, cert_path,sharepoint_site_url, orchestrator_connection)
+
+    created_folders = set()  # Keep track of created folders
+    today_date = datetime.now().strftime("%d-%m-%Y")
+
+    timestamp = time.time()
+
+    all_doc_ids = []  # Samles op og returneres, så process() kan journalisere/finalisere alt samlet til sidst
+
+    for folder_url in folders:
+        orchestrator_connection.log_info(f"Processing top-level folder: {folder_url}")
+        files = fetch_files_in_folder(ctx, folder_url)
+
+        # Group files by their subfolder paths
+        files_by_subfolder = {}
+        for file in files:
+            folder_path = file["FolderPath"]
+            if folder_path not in files_by_subfolder:
+                files_by_subfolder[folder_path] = []
+            files_by_subfolder[folder_path].append(file)
+
+        # Process each subfolder separately
+        for folder_path, folder_files in files_by_subfolder.items():
+            orchestrator_connection.log_info(f"Processing subfolder: {folder_path}")
+
+            folder_doc_ids = []
+
+            for file in folder_files:
+                elapsed = time.time() - timestamp
+                if elapsed >= 30 * 60:  # 30 minutes in seconds
+                    orchestrator_connection.log_info("30 minutter er gået, henter ny SharePoint-klient og nulstiller timestamp.")
+                    ctx = sharepoint_client(tenant, client_id, thumbprint, cert_path,sharepoint_site_url, orchestrator_connection)
+
+                    timestamp = time.time()
+                orchestrator_connection.log_info(f"Uploading file: {file['Name']} in {folder_path}")
+
+                # Download the file content
+                try:
+                    sp_file = File.open_binary(ctx, file['ServerRelativeUrl'])
+                    file_content = sp_file.content
+                except Exception:
+                    orchestrator_connection.log_info("Downloading file failed, trying large file download from unique id")
+                    large_file = ctx.web.get_file_by_id(file['UniqueId'])
+                    local_filename = file['Name']
+
+                    # Download large file to local storage
+                    with open(local_filename, "wb") as local_file:
+                        large_file.download_session(
+                            local_file,
+                            lambda offset: print_download_progress(offset, orchestrator_connection)
+                        ).execute_query()
+
+                    # Read the file content from the saved file
+                    with open(local_filename, "rb") as local_file:
+                        file_content = local_file.read()
+                    
+                    os.remove(local_filename)
+                                
+                
+                byte_array = list(file_content)
+
+                # Tilføjer '- Sharepoint' til filnavnet, så filen ikke risikerer at blive
+                # overskrevet af en fil med samme navn fra en anden kilde (Overwrite=True
+                # i make_payload_document gælder pr. filnavn+mappe)
+                base_name, file_ext = os.path.splitext(file['Name'])
+                upload_filename = f"{base_name} - Sharepoint{file_ext}"
+
+                # Prepare metadata
+                ows_dict = {
+                    "Title": f"{base_name} - Sharepoint",
+                    "CaseID": case_id,  # Replace with your case ID
+                    "Beskrivelse": "Uploadet af Aktbob",  # Add relevant description
+                    "Korrespondance": "Udgående",
+                    "Dato": today_date,
+                    "CCMMustBeOnPostList": "0"
+                }
+
+                # Create payload
+                payload = make_payload_document(ows_dict, case_id, folder_path, byte_array, upload_filename)
+
+                try:
+                    if (len(file_content) / (1024 * 1024)) > 10:
+                        raise Exception("File is larger than 10 MB, skipping normal upload to avoid errors")
+                    # Attempt upload
+                    response = upload_document_go(go_api_url, payload, session)
+                    if "DocId" in response:
+                        folder_doc_ids.append((response["DocId"], file['Name']))
+                        if folder_path not in created_folders:
+                            created_folders.add(folder_path)
+                    else:
+                        raise Exception("No DocId")
+                except Exception as e:
+                    orchestrator_connection.log_info(f"Failed to upload {file['Name']}: {e}")
+                    max_retries = 3
+                    for attempt in range(1, max_retries + 1):
+                        try:
+                            orchestrator_connection.log_info(f"Retry attempt {attempt} for {file['Name']} after error: {e}")
+                            orchestrator_connection.log_info("Retrying with large upload...")
+
+                            if folder_path not in created_folders:
+                                orchestrator_connection.log_info(f"Creating folder: {folder_path}")
+                                create_and_delete_placeholder(
+                                    go_api_url,
+                                    case_id,
+                                    str(folder_path).replace("\\", "/"),
+                                    session,
+                                    orchestrator_connection
+                                )
+                                created_folders.add(folder_path)
+
+                            large_response = upload_large_document(
+                                go_api_url,
+                                payload,
+                                session,
+                                file_content,
+                                orchestrator_connection
+                            )
+                            large_response_json = json.loads(large_response)
+
+                            if "DocId" in large_response_json:
+                                folder_doc_ids.append((large_response_json["DocId"], file['Name']))
+                                break  
+                            else:
+                                raise Exception(f"Failed upload for file: {file['Name']} in {folder_path}")
+                        except Exception as retry_exception:
+                            if attempt == max_retries:
+                                raise retry_exception  
+                            else:
+                                orchestrator_connection.log_info(f"Retry {attempt} failed: {retry_exception}")
+
+            # Sortér filer efter filnavn og læg doc-id'erne i den samlede liste.
+            # Journalisering/finalisering sker ikke her - det sker samlet i process()
+            # sammen med de øvrige uploadede dokumenter (GO-udleveringsmappe, mailbilag mv.)
+            folder_doc_ids.sort(key=lambda x: x[1])
+            all_doc_ids.extend(doc_id for doc_id, _ in folder_doc_ids)
+
+    return all_doc_ids
